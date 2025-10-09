@@ -234,7 +234,7 @@ class MainPipe(implicit p: Parameters) extends LLCModule with HasCHIOpcodes {
     exclusiveReq_s3 && (peerRNs_hit_s3 || !originalRN_hit_s3) ||
     releaseReq_s3 && originalRN_hit_s3 ||
     invalidReq_s3 && peerRNs_hit_s3 || 
-    atomics_s3 && peerRNs_hit_s3
+    atomics_s3 && (peerRNs_hit_s3 || originalRN_hit_s3)
   )
   clientsMetaW_s3.bits.apply(
     lineAddr = reqLineAddr_s3,
@@ -306,6 +306,7 @@ class MainPipe(implicit p: Parameters) extends LLCModule with HasCHIOpcodes {
   val invalidReq_s4         = RegNext(invalidReq_s3, false.B)
   val cleanReq_s4           = RegNext(cleanReq_s3, false.B)
   val peerRNs_hit_s4        = RegNext(peerRNs_hit_s3, false.B)
+  val originalRN_hit_s4     = RegNext(originalRN_hit_s3, false.B)
 
   val req_s4          = task_s4.bits
   val refill_task_s4  = req_s4.refillTask || req_s4.AMOrefillTask
@@ -335,8 +336,9 @@ class MainPipe(implicit p: Parameters) extends LLCModule with HasCHIOpcodes {
     */
   val unique_peerRN_s4 = !self_hit_s4 && peerRNs_hit_s4 && PopCount(clients_valids_vec_s4) === 1.U
   val replace_snoop_s4 = clients_meta_conflict_s4
-  val request_snoop_s4 = (exclusiveReq_s4 || invalidReq_s4 || atomics_s4) && peerRNs_hit_s4 ||
-    sharedReq_s4 && !self_hit_s4 || cleanReq_s4 && unique_peerRN_s4
+  val request_snoop_s4 = (exclusiveReq_s4 || invalidReq_s4) && peerRNs_hit_s4 ||
+    sharedReq_s4 && !self_hit_s4 || cleanReq_s4 && unique_peerRN_s4 ||
+    atomics_s4 && (originalRN_hit_s4 || peerRNs_hit_s4)
   val atomics_snoop_s4 = atomics_s4 && request_snoop_s4
   val need_snoop_s4 = replace_snoop_s4 || request_snoop_s4 || atomics_snoop_s4
   val snp_address_s4 = Mux(
@@ -433,7 +435,7 @@ class MainPipe(implicit p: Parameters) extends LLCModule with HasCHIOpcodes {
   comp_task_s4.replSnp := replace_snoop_s4
   comp_task_s4.tgtID := srcID_s4
   comp_task_s4.homeNID := req_s4.tgtID
-  comp_task_s4.dbID := req_s4.reqID
+  comp_task_s4.dbID := Mux(atomics_s4, Cat(1.U(1.W), req_s4.reqID.tail(1)), req_s4.reqID)
   comp_task_s4.resp := ParallelPriorityMux(
     Seq(respSC_s4, respUC_s4, respUD_s4, respI_s4),
     Seq(SC, UC, UD_PD, I)
@@ -473,7 +475,6 @@ class MainPipe(implicit p: Parameters) extends LLCModule with HasCHIOpcodes {
   // need ReadNoSnp/WriteNoSnp downwards
   val memRead_s4 = (readNotSharedDirty_s4 || readUnique_s4 || (atomics_s4 && !refill_task_s4)) && !self_hit_s4 && !peerRNs_hit_s4
   val memWrite_s4 = cleanReq_s4 && unique_peerRN_s4 || writeCleanFull_s4
-  // val amoWrite_s4 = 
   mem_s4.valid := task_s4.valid && (memRead_s4 || memWrite_s4)
   mem_s4.bits.state.s_issueReq := false.B
   mem_s4.bits.state.s_issueDat := !memWrite_s4

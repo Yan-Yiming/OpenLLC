@@ -32,9 +32,9 @@ class AtomicsMainPipe(implicit p: Parameters) extends LLCBundle {
 class AMOALU(implicit p: Parameters) extends LLCModule with HasCHIOpcodes {
   val io = IO(new Bundle {
     val opt = Input(UInt(REQ_OPCODE_WIDTH.W))
-    val out = Output(UInt(64.W))
-    val data1 = Input(UInt(64.W))
-    val data2 = Input(UInt(64.W))
+    val out = Output(UInt(XLEN.W))
+    val data1 = Input(UInt(XLEN.W))
+    val data2 = Input(UInt(XLEN.W))
   })
 
   io.out := ParallelLookUp(
@@ -59,26 +59,43 @@ class AtomicsUnitL3(implicit p: Parameters) extends LLCModule {
     val fromResponseUnit = Flipped(ValidIO(new AtomicsInfo()))
 
     val AMOrefillTask = DecoupledIO(new Task())
-    val datafromAMO = Output(UInt(64.W))
+    val datafromAMO = Output(UInt(XLEN.W))
     val blockfromAMO = Output(new DSBlock())
 
     val blockReqArb = Output(Bool())
   })
 
+//  def size2bits(size: UInt): UInt = {
+//    ParallelLookUp(
+//      size,
+//      Seq(
+//        0.U -> 8.U,
+//        1.U -> 16.U,
+//        2.U -> 32.U,
+//        3.U -> 64.U,
+//        4.U -> 128.U,
+//        6.U -> 256.U,
+//        7.U -> 512.U
+//      )
+//    )
+//  }
+
   def block2Nbit(data_block: UInt, offset: UInt, size: UInt): UInt = {
+//    val N = size2bits(size)
     val N = Mux(size === 2.U, 32.U, 64.U)
     val data_ret = (data_block >> (offset * 8.U)).asUInt
-    assert((N === 32.U || N === 64.U), "amo data length not support")
+//    assert((N === 32.U || N === 64.U), "amo data length not support")
     assert((offset % (N / 8.U).asUInt) === 0.U, "amo_data not alias")
 
     Mux(N === 64.U, data_ret(63, 0), Fill(2, data_ret(31, 0)))
   }
 
   def Nbit2block(data_block: UInt, offset: UInt, new_data: UInt, size: UInt): UInt = {
+//    val N = size2bits(size)
     val N = Mux(size === 2.U, 32.U, 64.U)
     val OFFSET = (offset * 8.U)
     val data = Mux(N === 64.U, new_data(63, 0), new_data(31, 0))
-    assert((N === 32.U || N === 64.U), "amo data length not support")
+//    assert((N === 32.U || N === 64.U), "amo data length not support")
     assert((offset % (N / 8.U).asUInt) === 0.U, "amo_data not alias")
 
     (((((data_block >> (OFFSET + N))) << N) | data) << OFFSET) | (data_block & ((1.U << OFFSET) - 1.U))
@@ -88,10 +105,10 @@ class AtomicsUnitL3(implicit p: Parameters) extends LLCModule {
   val s_invalid :: s_getMainPipe :: s_getResponseUnit :: Nil = Enum(3)
   val state = RegInit(s_invalid)
   val dataisfromDS = RegInit(false.B)
-  val datafromDS = RegInit(0.U(512.W))
-  val datafromL2 = RegInit(0.U(64.W))
-  val datafromSNPorMEM = RegInit(0.U(512.W))
-  val Result = RegInit(0.U(64.W))
+  val datafromDS = RegInit(0.U((blockBytes * 8).W))
+  val datafromL2 = RegInit(0.U(XLEN.W))
+  val datafromSNPorMEM = RegInit(0.U((blockBytes * 8).W))
+  val Result = RegInit(0.U(XLEN.W))
   val offset = RegInit(0.U(6.W))
   val size = RegInit(0.U(REQ_OPCODE_WIDTH.W))
   val Task = RegInit(0.U.asTypeOf(new Task()))

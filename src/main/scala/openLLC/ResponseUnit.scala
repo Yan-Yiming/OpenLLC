@@ -282,7 +282,7 @@ class ResponseUnit(implicit p: Parameters) extends LLCModule with HasCHIOpcodes 
   def handleAMOData(ncbwrdata: Valid[RespWithData]): Unit = {
     when(ncbwrdata.valid) {
       val update_vec = buffer.map(e =>
-        e.task.reqID === ncbwrdata.bits.txnID && e.valid && e.state.s_comp && e.state.w_compack &&
+        Cat(1.U(1.W), e.task.reqID.tail(1)) === ncbwrdata.bits.txnID && e.valid && e.state.s_comp && e.state.w_compack &&
           e.state.s_dbid && !e.state.w_ncbwrdata && ncbwrdata.bits.opcode === NonCopyBackWrData && e.is_amo
       )
       assert(PopCount(update_vec) < 2.U, "Response task repeated")
